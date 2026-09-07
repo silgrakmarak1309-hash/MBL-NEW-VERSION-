@@ -255,7 +255,7 @@ async function bindDeviceEmailAsync(email) {
 function bindDeviceEmail(email) {
   bindDeviceEmailAsync(email).catch(()=>{});
 }
-function bw({children:e}){  const[t,n]=m.useState(null),  [r,s]=m.useState(null),  [i,l]=m.useState(null),  [o,c]=m.useState(!0),  userRef=m.useRef(null),  u=m.useCallback(async w=>{    try {      let p_data=null;      try{const cached=localStorage.getItem("mlb_saved_profile_"+w);if(cached)p_data=JSON.parse(cached);}catch(e){}      try{        const{data:j,error:f}=await L.from("profiles").select("*").eq("id",w).maybeSingle();        if(!f&&j){p_data={...(p_data||{}),...j};}      }catch(err){}      try{        const{data:u_auth}=await L.auth.getUser();        const u_email=u_auth?.user?.email;        const u_name=u_auth?.user?.user_metadata?.name||u_email?.split('@')[0]||'User';        const isAdminUser = isUserAdmin({email:u_email});        if(!p_data){          p_data={id:w,email:u_email,name:u_name,role:isAdminUser?'super_admin':'user',account_status:'active',status:'active',is_pro:isAdminUser,pro_status:isAdminUser?'active':'inactive',created_at:new Date().toISOString()};          try{await L.from('profiles').upsert(p_data)}catch(err){}        }else{          if(isAdminUser){            p_data={...p_data,role:'super_admin',is_pro:!0,pro_status:'active'};            try{await L.from('profiles').update({role:'super_admin',is_pro:!0,pro_status:'active'}).eq('id',w)}catch(err){}          }        }      }catch(e){}      if(p_data){        try {          const syncState = await getCloudSyncState();          const userOverrides = syncState.userStatusOverrides || {};          const cleanEmail = (p_data.email || "").trim().toLowerCase();          const uCloud = userOverrides[p_data.id] || (cleanEmail ? userOverrides[cleanEmail] : null);          if (uCloud) {            if (uCloud.account_status !== undefined) p_data.account_status = uCloud.account_status;            if (uCloud.status !== undefined) p_data.status = uCloud.status;            if (uCloud.is_pro !== undefined) p_data.is_pro = uCloud.is_pro;            if (uCloud.pro_status !== undefined) p_data.pro_status = uCloud.pro_status;            if (uCloud.pro_expires_at) p_data.pro_expires_at = uCloud.pro_expires_at;            if (uCloud.approved_expiry_date) p_data.approved_expiry_date = uCloud.approved_expiry_date;          }        } catch(err) {}        try {          const statusOverrides = JSON.parse(localStorage.getItem("admin_status_overrides") || "{}");          const sOverride = statusOverrides[p_data.id] || (p_data.email && (statusOverrides[p_data.email] || statusOverrides[p_data.email.toLowerCase().trim()]));          if (sOverride) {            const val = (typeof sOverride === "object" && sOverride.account_status) ? sOverride.account_status : sOverride;            if (typeof val === "string") {              p_data.account_status = val;              p_data.status = val;            }          }          const proOverrides = JSON.parse(localStorage.getItem("admin_pro_overrides") || "{}");          const pOverride = proOverrides[p_data.id] || (p_data.email && (proOverrides[p_data.email] || proOverrides[p_data.email.toLowerCase().trim()]));          if (pOverride) {            if (pOverride.is_pro !== undefined) p_data.is_pro = pOverride.is_pro;            if (pOverride.pro_status !== undefined) p_data.pro_status = pOverride.pro_status;            if (pOverride.pro_expires_at) p_data.pro_expires_at = pOverride.pro_expires_at;            if (pOverride.approved_expiry_date) p_data.approved_expiry_date = pOverride.approved_expiry_date;          }        } catch(err) {}        try{localStorage.setItem("mlb_saved_profile_"+w,JSON.stringify(p_data));}catch(err){}      }      l(p_data);    } catch(err) {      console.warn('Profile fetch failure:', err);    }  },[]),  d=m.useCallback(async()=>{const currentUser=userRef.current;currentUser&&await u(currentUser.id)},[u]);  m.useEffect(()=>{    let isMounted = true;    const safetyTimer = setTimeout(() => {      if (isMounted) c(false);    }, 1500);    try {      L.auth.getSession().then(({data:j})=>{        if (!isMounted) return;        var f,g;        s(j.session);        userRef.current=((f=j.session)==null?void 0:f.user)??null;        n(userRef.current);        if((g=j.session)!=null&&g.user){          u(j.session.user.id).catch(()=>{}).finally(()=>{ if(isMounted) c(false); });        } else {          if (isMounted) c(false);        }      }).catch(err => {        console.warn('getSession error:', err);        if (isMounted) c(false);      });    } catch(err) {      if (isMounted) c(false);    }    let unsub = null;    try {      const { data: w } = L.auth.onAuthStateChange((j,f)=>{        if (!isMounted) return;        s(f);        userRef.current=(f==null?void 0:f.user)??null;        n(userRef.current);        if(f!=null&&f.user){          u(f.user.id).catch(()=>{});        } else {          l(null);        }      });      unsub = w?.subscription?.unsubscribe;    } catch(err) {}    const handleProfileSync = () => {      const currentUser=userRef.current;      if (currentUser) u(currentUser.id).catch(()=>{});    };    window.addEventListener("user_profile_updated", handleProfileSync);    window.addEventListener("user_status_changed", handleProfileSync);    window.addEventListener("recharge_status_updated", handleProfileSync);    window.addEventListener("storage", handleProfileSync);    window.addEventListener("focus", handleProfileSync);    document.addEventListener("visibilitychange", handleProfileSync);    return () => {      isMounted = false;      clearTimeout(safetyTimer);      if(unsub) unsub();      window.removeEventListener("user_profile_updated", handleProfileSync);      window.removeEventListener("user_status_changed", handleProfileSync);      window.removeEventListener("recharge_status_updated", handleProfileSync);      window.removeEventListener("storage", handleProfileSync);      window.removeEventListener("focus", handleProfileSync);      document.removeEventListener("visibilitychange", handleProfileSync);    };  },[u]);  const h=async(w,j,f)=>{try{const{error:g}=await L.auth.signUp({email:w,password:j,options:{data:{name:f}}});return{error:(g==null?void 0:g.message)??null}}catch(e){return{error:e.message||'Sign up failed'}}},  p=async(w,j)=>{try{const{error:f}=await L.auth.signInWithPassword({email:w,password:j});return{error:(f==null?void 0:f.message)??null}}catch(e){return{error:e.message||'Sign in failed'}}},  v=async()=>{try{await L.auth.signOut()}catch(e){}l(null)},  x=async w=>{try{const{error:j}=await L.auth.resetPasswordForEmail(w);return{error:(j==null?void 0:j.message)??null}}catch(e){return{error:e.message||'Reset failed'}}};    m.useEffect(function() {    if (t && i) {      try { checkProExpiryNotifications(t, i); } catch(e) {}      const interval = setInterval(function() {        try { checkProExpiryNotifications(t, i); } catch(e) {}      }, 3600000);      return function() { clearInterval(interval); };    }  }, [t, i]);  return a.jsx(Tp.Provider,{value:{user:t,session:r,profile:i,loading:o,signUp:h,signIn:p,signOut:v,resetPassword:x,refreshProfile:d},children:e})}function Ae(){const e=m.useContext(Tp);if(!e)throw new Error("useAuth must be used within AuthProvider");return e}/**
+function bw({children:e}){  const[t,n]=m.useState(null),  [r,s]=m.useState(null),  [i,l]=m.useState(null),  [o,c]=m.useState(!0),  userRef=m.useRef(null),  u=m.useCallback(async w=>{    try {      let p_data=null;      try{const cached=localStorage.getItem("mlb_saved_profile_"+w);if(cached)p_data=JSON.parse(cached);}catch(e){}      try{        const{data:j,error:f}=await L.from("profiles").select("*").eq("id",w).maybeSingle();        if(!f&&j){p_data={...(p_data||{}),...j};}      }catch(err){}      try{        if(typeof window!=="undefined"&&window.FirebaseDB&&window.FirebaseDB.getUser){          const fbUser=await window.FirebaseDB.getUser(w);          if(fbUser){p_data={...(p_data||{}),...fbUser};}        }      }catch(fbErr){}      try{        const{data:u_auth}=await L.auth.getUser();        const u_email=u_auth?.user?.email;        const u_name=u_auth?.user?.user_metadata?.name||u_email?.split('@')[0]||'User';        const isAdminUser = isUserAdmin({email:u_email});        if(!p_data){          p_data={id:w,email:u_email,name:u_name,role:isAdminUser?'super_admin':'user',account_status:'active',status:'active',is_pro:isAdminUser,pro_status:isAdminUser?'active':'inactive',created_at:new Date().toISOString()};          try{await L.from('profiles').upsert(p_data)}catch(err){}        }else{          if(isAdminUser){            p_data={...p_data,role:'super_admin',is_pro:!0,pro_status:'active'};            try{await L.from('profiles').update({role:'super_admin',is_pro:!0,pro_status:'active'}).eq('id',w)}catch(err){}          }        }      }catch(e){}      if(p_data){        try {          const syncState = await getCloudSyncState();          const userOverrides = syncState.userStatusOverrides || {};          const cleanEmail = (p_data.email || "").trim().toLowerCase();          const uCloud = userOverrides[p_data.id] || (cleanEmail ? userOverrides[cleanEmail] : null);          if (uCloud) {            if (uCloud.account_status !== undefined) p_data.account_status = uCloud.account_status;            if (uCloud.status !== undefined) p_data.status = uCloud.status;            if (uCloud.is_pro !== undefined) p_data.is_pro = uCloud.is_pro;            if (uCloud.pro_status !== undefined) p_data.pro_status = uCloud.pro_status;            if (uCloud.pro_expires_at) p_data.pro_expires_at = uCloud.pro_expires_at;            if (uCloud.approved_expiry_date) p_data.approved_expiry_date = uCloud.approved_expiry_date;          }        } catch(err) {}        try {          const statusOverrides = JSON.parse(localStorage.getItem("admin_status_overrides") || "{}");          const sOverride = statusOverrides[p_data.id] || (p_data.email && (statusOverrides[p_data.email] || statusOverrides[p_data.email.toLowerCase().trim()]));          if (sOverride) {            const val = (typeof sOverride === "object" && sOverride.account_status) ? sOverride.account_status : sOverride;            if (typeof val === "string") {              p_data.account_status = val;              p_data.status = val;            }          }          const proOverrides = JSON.parse(localStorage.getItem("admin_pro_overrides") || "{}");          const pOverride = proOverrides[p_data.id] || (p_data.email && (proOverrides[p_data.email] || proOverrides[p_data.email.toLowerCase().trim()]));          if (pOverride) {            if (pOverride.is_pro !== undefined) p_data.is_pro = pOverride.is_pro;            if (pOverride.pro_status !== undefined) p_data.pro_status = pOverride.pro_status;            if (pOverride.pro_expires_at) p_data.pro_expires_at = pOverride.pro_expires_at;            if (pOverride.approved_expiry_date) p_data.approved_expiry_date = pOverride.approved_expiry_date;          }        } catch(err) {}        try{localStorage.setItem("mlb_saved_profile_"+w,JSON.stringify(p_data));}catch(err){}      }      l(p_data);    } catch(err) {      console.warn('Profile fetch failure:', err);    }  },[]),  d=m.useCallback(async()=>{const currentUser=userRef.current;currentUser&&await u(currentUser.id)},[u]);  m.useEffect(()=>{    let isMounted = true;    const safetyTimer = setTimeout(() => {      if (isMounted) c(false);    }, 1500);    try {      L.auth.getSession().then(({data:j})=>{        if (!isMounted) return;        var f,g;        s(j.session);        userRef.current=((f=j.session)==null?void 0:f.user)??null;        n(userRef.current);        if((g=j.session)!=null&&g.user){          u(j.session.user.id).catch(()=>{}).finally(()=>{ if(isMounted) c(false); });        } else {          if (isMounted) c(false);        }      }).catch(err => {        console.warn('getSession error:', err);        if (isMounted) c(false);      });    } catch(err) {      if (isMounted) c(false);    }    let unsub = null;    try {      const { data: w } = L.auth.onAuthStateChange((j,f)=>{        if (!isMounted) return;        s(f);        userRef.current=(f==null?void 0:f.user)??null;        n(userRef.current);        if(f!=null&&f.user){          u(f.user.id).catch(()=>{});        } else {          l(null);        }      });      unsub = w?.subscription?.unsubscribe;    } catch(err) {}    const handleProfileSync = () => {      const currentUser=userRef.current;      if (currentUser) u(currentUser.id).catch(()=>{});    };    window.addEventListener("user_profile_updated", handleProfileSync);    window.addEventListener("user_status_changed", handleProfileSync);    window.addEventListener("recharge_status_updated", handleProfileSync);    window.addEventListener("storage", handleProfileSync);    window.addEventListener("focus", handleProfileSync);    document.addEventListener("visibilitychange", handleProfileSync);    return () => {      isMounted = false;      clearTimeout(safetyTimer);      if(unsub) unsub();      window.removeEventListener("user_profile_updated", handleProfileSync);      window.removeEventListener("user_status_changed", handleProfileSync);      window.removeEventListener("recharge_status_updated", handleProfileSync);      window.removeEventListener("storage", handleProfileSync);      window.removeEventListener("focus", handleProfileSync);      document.removeEventListener("visibilitychange", handleProfileSync);    };  },[u]);  const h=async(w,j,f)=>{try{const{error:g}=await L.auth.signUp({email:w,password:j,options:{data:{name:f}}});return{error:(g==null?void 0:g.message)??null}}catch(e){return{error:e.message||'Sign up failed'}}},  p=async(w,j)=>{try{const{error:f}=await L.auth.signInWithPassword({email:w,password:j});return{error:(f==null?void 0:f.message)??null}}catch(e){return{error:e.message||'Sign in failed'}}},  v=async()=>{try{await L.auth.signOut()}catch(e){}l(null)},  x=async w=>{try{const{error:j}=await L.auth.resetPasswordForEmail(w);return{error:(j==null?void 0:j.message)??null}}catch(e){return{error:e.message||'Reset failed'}}};    m.useEffect(function() {    if (t && i) {      try { checkProExpiryNotifications(t, i); } catch(e) {}      const interval = setInterval(function() {        try { checkProExpiryNotifications(t, i); } catch(e) {}      }, 3600000);      return function() { clearInterval(interval); };    }  }, [t, i]);  return a.jsx(Tp.Provider,{value:{user:t,session:r,profile:i,loading:o,signUp:h,signIn:p,signOut:v,resetPassword:x,refreshProfile:d},children:e})}function Ae(){const e=m.useContext(Tp);if(!e)throw new Error("useAuth must be used within AuthProvider");return e}/**
  * @license lucide-react v0.446.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -1808,6 +1808,15 @@ async function u1(e){  try {    const delList = JSON.parse(localStorage.getItem(
     const t = _profRes && _profRes.error;
     if (!t && e && Array.isArray(e) && e.length > 0) list = e;
   } catch(err) {}
+
+  if (typeof window !== "undefined" && window.FirebaseDB && window.FirebaseDB.getUsers) {
+    try {
+      const fbUsers = await window.FirebaseDB.getUsers(true);
+      if (Array.isArray(fbUsers) && fbUsers.length > 0) {
+        list = [...list, ...fbUsers];
+      }
+    } catch(fbErr) {}
+  }
   
   let syncState = { userStatusOverrides: {} };
   try { syncState = await getCloudSyncState(); } catch(err) {}
@@ -2818,7 +2827,9 @@ async function wd(e, t, uEmail) {
 
   if (typeof window !== "undefined" && window.FirebaseDB) {
     try {
-      if (window.FirebaseDB.updateUserStatus) {
+      if (window.FirebaseDB.updateUserAccountStatus) {
+        await window.FirebaseDB.updateUserAccountStatus(e, t, uEmail);
+      } else if (window.FirebaseDB.updateUserStatus) {
         window.FirebaseDB.updateUserStatus(e, t, null, { email: uEmail });
       } else if (window.FirebaseDB.saveUser) {
         window.FirebaseDB.saveUser({ id: e, email: uEmail, account_status: t, status: t });
@@ -2872,11 +2883,20 @@ async function wd(e, t, uEmail) {
 }
 
 async function k1(e, t, n, uEmail) {
-  const days = Number(t) || 30;
-  const expiry = new Date(Date.now() + days * 86400000).toISOString();
-  try { await L.rpc("admin_activate_pro", { p_user_id: e, p_duration_days: days, p_reason: n || ("Admin activated PRO: " + days + " days") }); } catch(err) {}
-  try { await L.from("profiles").update({ is_pro: !0, pro_status: "active", pro_expires_at: expiry, pro_expiry_at: expiry, approved_expiry_date: expiry, account_status: "active", status: "active" }).eq("id", e); } catch(err) {}
-  try { if (uEmail) await L.from("profiles").update({ is_pro: !0, pro_status: "active", pro_expires_at: expiry, pro_expiry_at: expiry, approved_expiry_date: expiry, account_status: "active", status: "active" }).eq("email", uEmail); } catch(err) {}
+  let expiry = null;
+  let durationVal = t;
+  if (typeof t === "string" && (t.includes("-") || t.includes("/"))) {
+    const d = new Date(t);
+    expiry = isNaN(d.getTime()) ? new Date(Date.now() + 30 * 86400000).toISOString() : d.toISOString();
+  } else {
+    const days = Number(t) || 30;
+    expiry = new Date(Date.now() + days * 86400000).toISOString();
+  }
+  const daysNum = Math.max(1, Math.ceil((new Date(expiry).getTime() - Date.now()) / 86400000));
+
+  try { await L.rpc("admin_activate_pro", { p_user_id: e, p_duration_days: daysNum, p_reason: n || ("Admin activated PRO plan until " + expiry) }); } catch(err) {}
+  try { await L.from("profiles").update({ is_pro: !0, pro_status: "active", pro_expires_at: expiry, pro_expiry_at: expiry, approved_expiry_date: expiry }).eq("id", e); } catch(err) {}
+  try { if (uEmail) await L.from("profiles").update({ is_pro: !0, pro_status: "active", pro_expires_at: expiry, pro_expiry_at: expiry, approved_expiry_date: expiry }).eq("email", uEmail); } catch(err) {}
 
   await saveCloudSyncRecord("[SYS_USER_STATUS]", {
     user_id: e || "",
@@ -2885,14 +2905,16 @@ async function k1(e, t, n, uEmail) {
     pro_status: "active",
     pro_expires_at: expiry,
     approved_expiry_date: expiry,
-    account_status: "active",
-    status: "active",
     updated_at: new Date().toISOString()
   });
 
-  if (typeof window !== "undefined" && window.FirebaseDB && window.FirebaseDB.saveUser) {
+  if (typeof window !== "undefined" && window.FirebaseDB) {
     try {
-      window.FirebaseDB.saveUser({ id: e, email: uEmail, is_pro: true, pro_status: "active", pro_expires_at: expiry, pro_expiry_at: expiry, approved_expiry_date: expiry, account_status: "active", status: "active" });
+      if (window.FirebaseDB.updateUserPro) {
+        await window.FirebaseDB.updateUserPro(e, true, expiry, uEmail, n);
+      } else if (window.FirebaseDB.saveUser) {
+        window.FirebaseDB.saveUser({ id: e, email: uEmail, is_pro: true, pro_status: "active", pro_expires_at: expiry, pro_expiry_at: expiry, approved_expiry_date: expiry });
+      }
     } catch(fbErr) {}
   }
 
@@ -2921,8 +2943,6 @@ async function k1(e, t, n, uEmail) {
           u.pro_expires_at = expiry;
           u.pro_expiry_at = expiry;
           u.approved_expiry_date = expiry;
-          u.account_status = "active";
-          u.status = "active";
         }
       });
       localStorage.setItem("admin_users", JSON.stringify(users));
@@ -2930,7 +2950,7 @@ async function k1(e, t, n, uEmail) {
   } catch(err) {}
 
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("user_profile_updated", { detail: { id: e, email: uEmail, is_pro: true, pro_status: "active" } }));
+    window.dispatchEvent(new CustomEvent("user_profile_updated", { detail: { id: e, email: uEmail, is_pro: true, pro_status: "active", pro_expires_at: expiry } }));
     window.dispatchEvent(new Event("storage"));
   }
 }
@@ -2950,9 +2970,13 @@ async function S1(e, uEmail) {
     updated_at: new Date().toISOString()
   });
 
-  if (typeof window !== "undefined" && window.FirebaseDB && window.FirebaseDB.saveUser) {
+  if (typeof window !== "undefined" && window.FirebaseDB) {
     try {
-      window.FirebaseDB.saveUser({ id: e, email: uEmail, is_pro: false, pro_status: "inactive", pro_expires_at: null, pro_expiry_at: null, approved_expiry_date: null });
+      if (window.FirebaseDB.updateUserPro) {
+        await window.FirebaseDB.updateUserPro(e, false, 0, uEmail, "Admin removed PRO");
+      } else if (window.FirebaseDB.saveUser) {
+        window.FirebaseDB.saveUser({ id: e, email: uEmail, is_pro: false, pro_status: "inactive", pro_expires_at: null, pro_expiry_at: null, approved_expiry_date: null });
+      }
     } catch(fbErr) {}
   }
 
@@ -6927,8 +6951,10 @@ function hj({isSuperAdmin:e}){
     [d, h] = m.useState(null),
     [p, v] = m.useState(""),
     [x, w] = m.useState("30"),
+    [customExpiryDate, setCustomExpiryDate] = m.useState(""),
     [j, f] = m.useState(""),
     [g, y] = m.useState(false),
+    [fetchingFresh, setFetchingFresh] = m.useState(false),
     [page, setPage] = m.useState(1);
 
   const PAGE_SIZE = 15;
@@ -6948,6 +6974,48 @@ function hj({isSuperAdmin:e}){
   m.useEffect(() => {
     _();
   }, [_]);
+
+  const openUserRecord = async (user) => {
+    if (!user) return;
+    u(user);
+    v(user.role || "user");
+    w("30");
+    f("");
+    let initialExpDate = "";
+    if (user.pro_expires_at || user.pro_expiry_at || user.approved_expiry_date) {
+      try {
+        const d = new Date(user.pro_expires_at || user.pro_expiry_at || user.approved_expiry_date);
+        if (!isNaN(d.getTime())) initialExpDate = d.toISOString().split("T")[0];
+      } catch(e){}
+    }
+    if (!initialExpDate) {
+      initialExpDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+    }
+    setCustomExpiryDate(initialExpDate);
+    h("user_record");
+    setFetchingFresh(true);
+    try {
+      const uId = user.id || user.user_id;
+      const uEmail = user.email;
+      if (typeof window !== "undefined" && window.FirebaseDB && window.FirebaseDB.getUser) {
+        const freshUser = await window.FirebaseDB.getUser(uId || uEmail);
+        if (freshUser) {
+          u(prev => ({ ...prev, ...freshUser }));
+          if (freshUser.role) v(freshUser.role);
+          if (freshUser.pro_expires_at || freshUser.pro_expiry_at || freshUser.approved_expiry_date) {
+            try {
+              const d = new Date(freshUser.pro_expires_at || freshUser.pro_expiry_at || freshUser.approved_expiry_date);
+              if (!isNaN(d.getTime())) setCustomExpiryDate(d.toISOString().split("T")[0]);
+            } catch(e){}
+          }
+        }
+      }
+    } catch(err) {
+      console.warn("Failed to fetch fresh user doc:", err);
+    } finally {
+      setFetchingFresh(false);
+    }
+  };
 
   const k = m.useMemo(() => {
     const query = (l || "").trim().toLowerCase();
@@ -6987,7 +7055,7 @@ function hj({isSuperAdmin:e}){
       const uId = c.id || c.user_id;
       const uEmail = c.email;
       if (d === "role") {
-        await b1(uId, p);
+        await b1(uId, p, uEmail);
         toastRef.current.show("Role updated for " + (c.name || "user"), "success");
       } else if (d === "pro_activate") {
         const dCount = Number(x) || 30;
@@ -7002,6 +7070,85 @@ function hj({isSuperAdmin:e}){
       await _(true);
     } catch(b) {
       toastRef.current.show(b instanceof Error ? b.message : "Action failed", "error");
+    } finally {
+      y(false);
+    }
+  };
+
+  const handleModalProActivate = async () => {
+    if (!c) return;
+    y(true);
+    try {
+      const uId = c.id || c.user_id;
+      const uEmail = c.email;
+      const targetParam = customExpiryDate || x || 30;
+      await k1(uId, targetParam, j || ("Admin manual PRO activation: " + (customExpiryDate ? ("Expiry " + customExpiryDate) : (x + " days"))), uEmail);
+      
+      let expIso = "";
+      if (customExpiryDate) {
+        const d = new Date(customExpiryDate);
+        expIso = isNaN(d.getTime()) ? new Date(Date.now() + 30 * 86400000).toISOString() : d.toISOString();
+      } else {
+        const dCount = Number(x) || 30;
+        expIso = new Date(Date.now() + dCount * 86400000).toISOString();
+      }
+      u(prev => ({ ...prev, is_pro: true, pro_status: "active", pro_expires_at: expIso, pro_expiry_at: expIso, approved_expiry_date: expIso }));
+      toastRef.current.show("PRO plan set Active until " + new Date(expIso).toLocaleDateString() + " in Firestore!", "success");
+      await _(true);
+    } catch(err) {
+      toastRef.current.show("Failed to activate PRO: " + (err.message || err), "error");
+    } finally {
+      y(false);
+    }
+  };
+
+  const handleModalProDeactivate = async () => {
+    if (!c) return;
+    y(true);
+    try {
+      const uId = c.id || c.user_id;
+      const uEmail = c.email;
+      await S1(uId, uEmail);
+      u(prev => ({ ...prev, is_pro: false, pro_status: "inactive", pro_expires_at: null, pro_expiry_at: null, approved_expiry_date: null }));
+      toastRef.current.show("PRO deactivated permanently in Firestore!", "success");
+      await _(true);
+    } catch(err) {
+      toastRef.current.show("Failed to deactivate PRO: " + (err.message || err), "error");
+    } finally {
+      y(false);
+    }
+  };
+
+  const handleModalAccountStatus = async (newStatus) => {
+    if (!c) return;
+    y(true);
+    try {
+      const uId = c.id || c.user_id;
+      const uEmail = c.email;
+      await wd(uId, newStatus, uEmail);
+      u(prev => ({ ...prev, account_status: newStatus, status: newStatus }));
+      toastRef.current.show("Account status updated to " + newStatus + " in Firestore!", "success");
+      await _(true);
+    } catch(err) {
+      toastRef.current.show("Failed to update status: " + (err.message || err), "error");
+    } finally {
+      y(false);
+    }
+  };
+
+  const handleModalRoleChange = async (newRole) => {
+    if (!c) return;
+    y(true);
+    try {
+      const uId = c.id || c.user_id;
+      const uEmail = c.email;
+      await b1(uId, newRole, uEmail);
+      v(newRole);
+      u(prev => ({ ...prev, role: newRole }));
+      toastRef.current.show("User role updated to " + newRole + " in Firestore!", "success");
+      await _(true);
+    } catch(err) {
+      toastRef.current.show("Failed to update role: " + (err.message || err), "error");
     } finally {
       y(false);
     }
@@ -7057,23 +7204,28 @@ function hj({isSuperAdmin:e}){
                 a.jsx("tbody", {
                   className: "divide-y divide-gray-100",
                   children: paginatedUsers.map(b => {
-                    const isProActive = Ct(b);
+                    const isUserPro = Boolean(b.is_pro === true || b.pro_status === "active");
+                    const userProExp = b.pro_expires_at || b.pro_expiry_at || b.approved_expiry_date;
+                    const isUserExpired = Boolean(isUserPro && userProExp && new Date(userProExp).getTime() < Date.now());
+                    const isProActive = Boolean(isUserPro && !isUserExpired);
                     const isBlocked = b.account_status === "blocked" || b.status === "blocked";
                     const isInactive = b.account_status === "inactive" || b.status === "inactive";
                     const pNum = (b.phone || b.whatsapp || "").replace(/[^0-9]/g, "");
                     const uEmail = b.email || "";
 
                     return a.jsxs("tr", {
-                      className: "hover:bg-gray-50/80 transition-colors " + (isBlocked ? "bg-red-50/40" : isInactive ? "bg-amber-50/30" : ""),
+                      className: "hover:bg-gray-50/80 transition-colors " + (isBlocked ? "bg-red-50/40" : isInactive ? "bg-amber-50/30" : isUserExpired ? "bg-amber-50/20" : ""),
                       children: [
-                        /* USER DETAILS */
+                        /* USER DETAILS - CLICKABLE TO OPEN USER RECORD */
                         a.jsx("td", {
-                          className: "p-3",
+                          className: "p-3 cursor-pointer group",
+                          onClick: () => openUserRecord(b),
+                          title: "Click to open full User Record",
                           children: a.jsxs("div", {
                             className: "flex items-center gap-3",
                             children: [
                               a.jsx("div", {
-                                className: "w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 " + (isProActive ? "bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-xs" : "bg-primary-100 text-primary-700"),
+                                className: "w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 transition-transform group-hover:scale-105 " + (isProActive ? "bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-xs" : isUserExpired ? "bg-red-100 text-red-700 border border-red-200" : "bg-primary-100 text-primary-700"),
                                 children: (b.name ? b.name[0] : (b.email ? b.email[0] : "U")).toUpperCase()
                               }),
                               a.jsxs("div", {
@@ -7082,8 +7234,8 @@ function hj({isSuperAdmin:e}){
                                   a.jsxs("div", {
                                     className: "flex items-center gap-1.5",
                                     children: [
-                                      a.jsx("p", { className: "font-semibold text-gray-900 text-sm truncate", children: b.name || "Anonymous User" }),
-                                      isProActive && a.jsx("span", { className: "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white shadow-xs", children: "⭐ PRO" })
+                                      a.jsx("p", { className: "font-semibold text-gray-900 text-sm truncate group-hover:text-primary-600 transition-colors underline-offset-2 group-hover:underline", children: b.name || "Anonymous User" }),
+                                      isProActive ? a.jsx("span", { className: "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white shadow-xs", children: "⭐ PRO" }) : isUserExpired ? a.jsx("span", { className: "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white shadow-xs", children: "EXPIRED" }) : null
                                     ]
                                   }),
                                   a.jsx("p", { className: "text-xs text-gray-500 truncate", children: b.email || "No email" }),
@@ -7119,12 +7271,12 @@ function hj({isSuperAdmin:e}){
                             className: "space-y-1",
                             children: [
                               a.jsx("span", {
-                                className: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold " + (isProActive ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-gray-100 text-gray-600"),
-                                children: isProActive ? "⭐ PRO Active" : "Regular User"
+                                className: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold " + (isProActive ? "bg-amber-100 text-amber-800 border border-amber-200" : isUserExpired ? "bg-red-100 text-red-800 border border-red-200" : "bg-gray-100 text-gray-600"),
+                                children: isProActive ? ("⭐ Active (" + Bp(b) + "d)") : isUserExpired ? "⚠️ PRO Expired" : "Regular / Inactive"
                               }),
-                              isProActive && b.pro_expires_at && a.jsxs("p", {
-                                className: "text-[11px] text-gray-400",
-                                children: ["Exp: ", new Date(b.pro_expires_at).toLocaleDateString()]
+                              userProExp && a.jsxs("p", {
+                                className: "text-[11px] " + (isUserExpired ? "text-red-500 font-medium" : "text-gray-400"),
+                                children: [isUserExpired ? "Ended: " : "Exp: ", new Date(userProExp).toLocaleDateString()]
                               })
                             ]
                           })
@@ -7143,57 +7295,69 @@ function hj({isSuperAdmin:e}){
                           children: a.jsxs("div", {
                             className: "flex items-center justify-end gap-1.5 flex-wrap",
                             children: [
-                              /* 1. WHATSAPP */
+                              /* 0. OPEN USER RECORD MODAL */
+                              a.jsxs("button", {
+                                onClick: () => openUserRecord(b),
+                                className: "px-2.5 py-1.5 rounded-lg border border-primary-300 text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors shrink-0 flex items-center gap-1 text-xs font-bold shadow-xs",
+                                title: "Open Full User Record (Manual PRO & Account Controls)",
+                                children: [
+                                  a.jsx(Rs, { className: "w-3.5 h-3.5" }),
+                                  a.jsx("span", { children: "Record" })
+                                ]
+                              }),
+                              /* 1. QUICK 30-DAY MONTHLY PRO ACTIVE */
+                              a.jsxs("button", {
+                                onClick: async () => {
+                                  try {
+                                    await k1(b.id || b.user_id, "30", "Admin 30-day monthly plan", b.email);
+                                    toastRef.current.show("30-Day Monthly PRO activated for " + (b.name || "user") + " in Firestore!", "success");
+                                    await _(true);
+                                  } catch(err) {
+                                    toastRef.current.show("Failed to update PRO", "error");
+                                  }
+                                },
+                                className: "px-2 py-1.5 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors shrink-0 text-xs font-bold flex items-center gap-1",
+                                title: isUserExpired ? "Renew 30-Day Monthly Plan in Firestore" : "Set Active (30 Days)",
+                                children: [
+                                  a.jsx(Ve, { className: "w-3.5 h-3.5 text-amber-600" }),
+                                  a.jsx("span", { children: isUserExpired ? "⚡ Renew 30d" : isProActive ? "+30d" : "⚡ 30d" })
+                                ]
+                              }),
+                              /* 2. QUICK DEACTIVATE PRO */
+                              isUserPro && a.jsxs("button", {
+                                onClick: async () => {
+                                  try {
+                                    await S1(b.id || b.user_id, b.email);
+                                    toastRef.current.show("PRO set to Inactive in Firestore for " + (b.name || "user"), "success");
+                                    await _(true);
+                                  } catch(err) {
+                                    toastRef.current.show("Failed to deactivate PRO", "error");
+                                  }
+                                },
+                                className: "px-2 py-1.5 rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors shrink-0 text-xs font-bold flex items-center gap-1",
+                                title: "Set PRO Inactive in Firestore",
+                                children: [
+                                  a.jsx(Cw, { className: "w-3.5 h-3.5" }),
+                                  a.jsx("span", { children: "Inactive" })
+                                ]
+                              }),
+                              /* 3. WHATSAPP */
                               pNum && a.jsx("a", {
                                 href: "https://wa.me/" + (pNum.length === 10 ? "91" + pNum : pNum) + "?text=" + encodeURIComponent("Hello " + (b.name || "") + ", regards from Meri Local Bazaar Admin team."),
                                 target: "_blank",
                                 rel: "noreferrer",
                                 className: "p-1.5 rounded-lg border border-green-200 text-green-600 bg-green-50/50 hover:bg-green-100 transition-colors shrink-0",
                                 title: "Chat on WhatsApp",
-                                children: a.jsx(Lt, { className: "w-3.5 h-3.5" })
+                                children: a.jsx(wo, { className: "w-3.5 h-3.5" })
                               }),
-                              /* 2. CALL */
+                              /* 4. CALL */
                               pNum && a.jsx("a", {
                                 href: "tel:" + pNum,
                                 className: "p-1.5 rounded-lg border border-blue-200 text-blue-600 bg-blue-50/50 hover:bg-blue-100 transition-colors shrink-0",
                                 title: "Direct Phone Call",
-                                children: a.jsx(Pt, { className: "w-3.5 h-3.5" })
+                                children: a.jsx(Dp, { className: "w-3.5 h-3.5" })
                               }),
-                              /* 3. EMAIL */
-                              uEmail && a.jsx("a", {
-                                href: "mailto:" + uEmail + "?subject=" + encodeURIComponent("Message from Meri Local Bazaar") + "&body=" + encodeURIComponent("Hello " + (b.name || "") + ",\n\n"),
-                                className: "p-1.5 rounded-lg border border-purple-200 text-purple-600 bg-purple-50/50 hover:bg-purple-100 transition-colors shrink-0",
-                                title: "Send Email",
-                                children: a.jsx(Zc, { className: "w-3.5 h-3.5" })
-                              }),
-                              /* 4. ACTIVATE / EXTEND PRO */
-                              a.jsx("button", {
-                                onClick: () => {
-                                  u(b);
-                                  h("pro_activate");
-                                  w("30");
-                                  f("");
-                                },
-                                className: "p-1.5 rounded-lg border border-amber-200 text-amber-700 bg-amber-50/50 hover:bg-amber-100 transition-colors shrink-0",
-                                title: "Activate / Extend PRO Plan",
-                                children: a.jsx(Ve, { className: "w-3.5 h-3.5" })
-                              }),
-                              /* 5. DEACTIVATE PRO */
-                              isProActive && a.jsx("button", {
-                                onClick: async () => {
-                                  try {
-                                    await S1(b.id || b.user_id, b.email);
-                                    toastRef.current.show("PRO deactivated for " + (b.name || "user"), "success");
-                                    await _(true);
-                                  } catch(err) {
-                                    toastRef.current.show("Failed to deactivate PRO", "error");
-                                  }
-                                },
-                                className: "p-1.5 rounded-lg border border-red-200 text-red-600 bg-red-50/50 hover:bg-red-100 transition-colors",
-                                title: "Deactivate PRO",
-                                children: a.jsx(Cw, { className: "w-3.5 h-3.5" })
-                              }),
-                              /* 6. BLOCK / UNBLOCK */
+                              /* 5. BLOCK / UNBLOCK */
                               isBlocked ? a.jsx("button", {
                                 onClick: async () => {
                                   try {
@@ -7221,7 +7385,7 @@ function hj({isSuperAdmin:e}){
                                 title: "Block User",
                                 children: a.jsx(Cw, { className: "w-3.5 h-3.5" })
                               }),
-                              /* 7. ACTIVE / INACTIVE TOGGLE */
+                              /* 6. ACTIVE / INACTIVE TOGGLE */
                               a.jsx("button", {
                                 onClick: async () => {
                                   const nextStatus = (b.account_status === "inactive") ? "active" : "inactive";
@@ -7233,20 +7397,9 @@ function hj({isSuperAdmin:e}){
                                     toastRef.current.show("Failed to update status", "error");
                                   }
                                 },
-                                className: "px-2 py-1 rounded-lg border text-xs font-bold " + (b.account_status === "inactive" ? "border-amber-300 text-amber-800 bg-amber-100 hover:bg-amber-200" : "border-gray-200 text-gray-600 hover:bg-gray-100"),
-                                title: b.account_status === "inactive" ? "Activate User" : "Set Inactive",
+                                className: "px-2 py-1.5 rounded-lg border text-xs font-bold " + (b.account_status === "inactive" ? "border-amber-300 text-amber-800 bg-amber-100 hover:bg-amber-200" : "border-gray-200 text-gray-600 hover:bg-gray-100"),
+                                title: b.account_status === "inactive" ? "Activate User Account" : "Set Inactive Account",
                                 children: b.account_status === "inactive" ? "⚡ Active" : "⏸ Inactive"
-                              }),
-                              /* 8. CHANGE ROLE (Super Admin only) */
-                              e && a.jsx("button", {
-                                onClick: () => {
-                                  u(b);
-                                  h("role");
-                                  v(b.role || "user");
-                                },
-                                className: "p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors",
-                                title: "Change Role",
-                                children: a.jsx(e1, { className: "w-3.5 h-3.5" })
                               })
                             ]
                           })
@@ -7284,6 +7437,414 @@ function hj({isSuperAdmin:e}){
             ]
           })
         ]
+      }),
+      /* USER RECORD DETAIL MODAL */
+      a.jsx(ze, {
+        open: d === "user_record",
+        onClose: () => { h(null); u(null); },
+        title: c ? ("User Record: " + (c.name || c.email || "Details")) : "User Record",
+        children: c && (() => {
+          const isUserPro = Boolean(c.is_pro === true || c.pro_status === "active");
+          const expTime = c.pro_expires_at || c.pro_expiry_at || c.approved_expiry_date;
+          const isProExpired = Boolean(isUserPro && expTime && new Date(expTime).getTime() < Date.now());
+          const isProActive = Boolean(isUserPro && !isProExpired);
+          const isBlocked = c.account_status === "blocked" || c.status === "blocked";
+          const isInactive = c.account_status === "inactive" || c.status === "inactive";
+          const pNum = (c.phone || c.whatsapp || "").replace(/[^0-9]/g, "");
+          const uEmail = c.email || "";
+
+          return a.jsxs("div", {
+            className: "p-5 space-y-6 max-h-[80vh] overflow-y-auto",
+            children: [
+              /* TOP PROFILE HEADER */
+              a.jsxs("div", {
+                className: "flex items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200",
+                children: [
+                  a.jsx("div", {
+                    className: "w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl shrink-0 " + (isProActive ? "bg-amber-100 text-amber-800 border-2 border-amber-400 shadow-sm" : isProExpired ? "bg-red-100 text-red-700 border-2 border-red-300" : "bg-primary-100 text-primary-700 border border-primary-200"),
+                    children: (c.name ? c.name[0] : (c.email ? c.email[0] : "U")).toUpperCase()
+                  }),
+                  a.jsxs("div", {
+                    className: "flex-1 min-w-0",
+                    children: [
+                      a.jsxs("div", {
+                        className: "flex items-center gap-2 flex-wrap",
+                        children: [
+                          a.jsx("h2", { className: "text-lg font-bold text-gray-900 truncate", children: c.name || "Anonymous User" }),
+                          isProActive ? a.jsx("span", { className: "px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white shadow-xs", children: "⭐ PRO Active" }) : isProExpired ? a.jsx("span", { className: "px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white shadow-xs", children: "⚠️ PRO Expired" }) : a.jsx("span", { className: "px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700", children: "Regular User" }),
+                          a.jsx("span", { className: "badge " + (isBlocked ? "badge-red" : isInactive ? "badge-amber" : "badge-green"), children: isBlocked ? "🚫 Blocked" : isInactive ? "⏸ Inactive" : "Active" })
+                        ]
+                      }),
+                      a.jsx("p", { className: "text-xs text-gray-600 truncate mt-0.5", children: c.email || "No email" }),
+                      c.city && a.jsxs("p", { className: "text-xs text-gray-500 mt-0.5 flex items-center gap-1", children: ["📍 ", c.city] }),
+                      fetchingFresh && a.jsx("p", { className: "text-[11px] text-primary-600 mt-1 italic animate-pulse", children: "Syncing latest details from Firestore..." })
+                    ]
+                  })
+                ]
+              }),
+
+              /* USER INFORMATION GRID */
+              a.jsxs("div", {
+                className: "grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs",
+                children: [
+                  a.jsxs("div", {
+                    className: "bg-white p-3 rounded-lg border border-gray-200 space-y-1",
+                    children: [
+                      a.jsx("span", { className: "text-gray-400 font-medium block", children: "User ID / Doc ID" }),
+                      a.jsxs("div", {
+                        className: "flex items-center justify-between gap-1",
+                        children: [
+                          a.jsx("code", { className: "text-gray-800 font-mono text-[11px] truncate select-all", children: c.id || c.user_id || "N/A" }),
+                          a.jsx("button", {
+                            type: "button",
+                            onClick: () => {
+                              try { navigator.clipboard.writeText(c.id || c.user_id || ""); toastRef.current.show("Copied ID to clipboard!", "success"); } catch(e){}
+                            },
+                            className: "text-[10px] text-primary-600 hover:underline font-semibold shrink-0",
+                            children: "Copy"
+                          })
+                        ]
+                      })
+                    ]
+                  }),
+                  a.jsxs("div", {
+                    className: "bg-white p-3 rounded-lg border border-gray-200 space-y-1",
+                    children: [
+                      a.jsx("span", { className: "text-gray-400 font-medium block", children: "Account Role" }),
+                      a.jsx("span", { className: "font-semibold text-gray-800 uppercase tracking-wide", children: c.role || "user" })
+                    ]
+                  }),
+                  a.jsxs("div", {
+                    className: "bg-white p-3 rounded-lg border border-gray-200 space-y-1",
+                    children: [
+                      a.jsx("span", { className: "text-gray-400 font-medium block", children: "Primary Phone" }),
+                      a.jsx("span", { className: "font-semibold text-gray-800", children: c.phone || "Not provided" })
+                    ]
+                  }),
+                  a.jsxs("div", {
+                    className: "bg-white p-3 rounded-lg border border-gray-200 space-y-1",
+                    children: [
+                      a.jsx("span", { className: "text-gray-400 font-medium block", children: "WhatsApp Number" }),
+                      a.jsx("span", { className: "font-semibold text-green-700", children: c.whatsapp || c.phone || "Not provided" })
+                    ]
+                  }),
+                  a.jsxs("div", {
+                    className: "bg-white p-3 rounded-lg border border-gray-200 space-y-1",
+                    children: [
+                      a.jsx("span", { className: "text-gray-400 font-medium block", children: "Joined Date" }),
+                      a.jsx("span", { className: "font-semibold text-gray-800", children: c.created_at ? new Date(c.created_at).toLocaleString() : "Existing user" })
+                    ]
+                  }),
+                  a.jsxs("div", {
+                    className: "bg-white p-3 rounded-lg border border-gray-200 space-y-1",
+                    children: [
+                      a.jsx("span", { className: "text-gray-400 font-medium block", children: "Location / Address" }),
+                      a.jsx("span", { className: "font-semibold text-gray-800", children: c.city || c.address || "Not specified" })
+                    ]
+                  })
+                ]
+              }),
+
+              /* DIRECT COMMUNICATION CHANNELS */
+              a.jsxs("div", {
+                className: "space-y-2",
+                children: [
+                  a.jsx("h3", { className: "text-xs font-bold text-gray-700 uppercase tracking-wider", children: "Direct Communication" }),
+                  a.jsxs("div", {
+                    className: "grid grid-cols-3 gap-2",
+                    children: [
+                      pNum ? a.jsxs("a", {
+                        href: "https://wa.me/" + (pNum.length === 10 ? "91" + pNum : pNum) + "?text=" + encodeURIComponent("Hello " + (c.name || "") + ", regards from Meri Local Bazaar Admin team."),
+                        target: "_blank",
+                        rel: "noreferrer",
+                        className: "flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 font-semibold text-xs transition-colors",
+                        children: [a.jsx(wo, { className: "w-4 h-4" }), "WhatsApp"]
+                      }) : a.jsxs("button", {
+                        disabled: true,
+                        className: "flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-400 font-semibold text-xs cursor-not-allowed",
+                        children: [a.jsx(wo, { className: "w-4 h-4" }), "WhatsApp"]
+                      }),
+                      pNum ? a.jsxs("a", {
+                        href: "tel:" + pNum,
+                        className: "flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs transition-colors",
+                        children: [a.jsx(Dp, { className: "w-4 h-4" }), "Call"]
+                      }) : a.jsxs("button", {
+                        disabled: true,
+                        className: "flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-400 font-semibold text-xs cursor-not-allowed",
+                        children: [a.jsx(Dp, { className: "w-4 h-4" }), "Call"]
+                      }),
+                      uEmail ? a.jsxs("a", {
+                        href: "mailto:" + uEmail + "?subject=" + encodeURIComponent("Message from Meri Local Bazaar Admin") + "&body=" + encodeURIComponent("Hello " + (c.name || "") + ",\n\n"),
+                        className: "flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 font-semibold text-xs transition-colors",
+                        children: [a.jsx(SafeMailIcon, { className: "w-4 h-4" }), "Email"]
+                      }) : a.jsxs("button", {
+                        disabled: true,
+                        className: "flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-400 font-semibold text-xs cursor-not-allowed",
+                        children: [a.jsx(SafeMailIcon, { className: "w-4 h-4" }), "Email"]
+                      })
+                    ]
+                  })
+                ]
+              }),
+
+              /* PRO MEMBERSHIP MANAGEMENT SECTION (MANUAL ADMIN CONTROL) */
+              a.jsxs("div", {
+                className: "p-4 rounded-xl border-2 " + (isProActive ? "border-amber-300 bg-amber-50/40" : isProExpired ? "border-red-300 bg-red-50/40" : "border-gray-200 bg-gray-50/50") + " space-y-4",
+                children: [
+                  a.jsxs("div", {
+                    className: "flex items-center justify-between flex-wrap gap-2",
+                    children: [
+                      a.jsxs("div", {
+                        children: [
+                          a.jsx("h3", { className: "text-sm font-bold text-gray-900 flex items-center gap-1.5", children: [a.jsx(Ve, { className: "w-4 h-4 text-amber-600" }), "PRO Membership Plan & Manual Admin Control"] }),
+                          a.jsx("p", { className: "text-xs text-gray-500 mt-0.5", children: "Admin manually manages active/inactive plans and renewal expiry dates in Firestore." })
+                        ]
+                      }),
+                      a.jsx("span", {
+                        className: "px-3 py-1 rounded-full text-xs font-bold " + (isProActive ? "bg-amber-500 text-white shadow-xs" : isProExpired ? "bg-red-500 text-white shadow-xs" : "bg-gray-200 text-gray-700"),
+                        children: isProActive ? "⭐ PRO ACTIVE" : isProExpired ? "⚠️ PRO EXPIRED" : "PRO INACTIVE"
+                      })
+                    ]
+                  }),
+
+                  /* EXPIRED NOTICE */
+                  isProExpired && expTime && a.jsxs("div", {
+                    className: "p-3 bg-red-100/80 border border-red-300 rounded-lg text-xs text-red-800 space-y-1",
+                    children: [
+                      a.jsx("p", { className: "font-bold flex items-center gap-1", children: ["⚠️ Monthly Plan Expired on ", new Date(expTime).toLocaleString()] }),
+                      a.jsx("p", { children: "This user's PRO plan has ended. You can select a new monthly duration or calendar date below and click 'Set PRO Active' to renew, or click 'Set Inactive'." })
+                    ]
+                  }),
+
+                  /* ACTIVE PLAN DETAILS */
+                  isProActive && expTime && a.jsxs("div", {
+                    className: "p-3 bg-white rounded-lg border border-amber-200 flex items-center justify-between text-xs",
+                    children: [
+                      a.jsxs("div", {
+                        children: [
+                          a.jsx("span", { className: "text-gray-500 block", children: "Current Expiration Date" }),
+                          a.jsx("span", { className: "font-bold text-amber-900 text-sm", children: new Date(expTime).toLocaleString() })
+                        ]
+                      }),
+                      a.jsxs("div", {
+                        className: "text-right",
+                        children: [
+                          a.jsx("span", { className: "text-gray-500 block", children: "Time Remaining" }),
+                          a.jsx("span", { className: "font-semibold text-amber-700", children: Bp(c) })
+                        ]
+                      })
+                    ]
+                  }),
+
+                  /* CONTROLS TO SET EXPIRY OR ACTIVATE/DEACTIVATE */
+                  a.jsxs("div", {
+                    className: "space-y-3 bg-white p-3.5 rounded-lg border border-gray-200",
+                    children: [
+                      a.jsx("label", { className: "label text-xs font-bold text-gray-700", children: isProActive ? "Set Plan Expiry / Extend Duration" : isProExpired ? "Renew Monthly Plan / Set New Expiry" : "Set PRO Plan Duration & Expiry" }),
+                      
+                      /* QUICK PRESET BUTTONS */
+                      a.jsxs("div", {
+                        className: "flex gap-2 flex-wrap",
+                        children: [
+                          a.jsx("button", {
+                            type: "button",
+                            onClick: () => {
+                              w("30");
+                              const d = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+                              setCustomExpiryDate(d);
+                            },
+                            className: "btn-outline text-xs flex-1 py-1.5 " + (x === "30" ? "border-amber-500 bg-amber-50 text-amber-800 font-bold" : ""),
+                            children: "📅 30 Days (1 Month)"
+                          }),
+                          a.jsx("button", {
+                            type: "button",
+                            onClick: () => {
+                              w("60");
+                              const d = new Date(Date.now() + 60 * 86400000).toISOString().split("T")[0];
+                              setCustomExpiryDate(d);
+                            },
+                            className: "btn-outline text-xs flex-1 py-1.5 " + (x === "60" ? "border-amber-500 bg-amber-50 text-amber-800 font-bold" : ""),
+                            children: "📅 60 Days (2 Months)"
+                          }),
+                          a.jsx("button", {
+                            type: "button",
+                            onClick: () => {
+                              w("90");
+                              const d = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+                              setCustomExpiryDate(d);
+                            },
+                            className: "btn-outline text-xs flex-1 py-1.5 " + (x === "90" ? "border-amber-500 bg-amber-50 text-amber-800 font-bold" : ""),
+                            children: "📅 90 Days (3 Months)"
+                          }),
+                          a.jsx("button", {
+                            type: "button",
+                            onClick: () => {
+                              w("365");
+                              const d = new Date(Date.now() + 365 * 86400000).toISOString().split("T")[0];
+                              setCustomExpiryDate(d);
+                            },
+                            className: "btn-outline text-xs flex-1 py-1.5 " + (x === "365" ? "border-amber-500 bg-amber-50 text-amber-800 font-bold" : ""),
+                            children: "📅 365 Days (1 Year)"
+                          })
+                        ]
+                      }),
+
+                      /* CALENDAR DATE PICKER AND NOTE */
+                      a.jsxs("div", {
+                        className: "grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1",
+                        children: [
+                          a.jsxs("div", {
+                            children: [
+                              a.jsx("span", { className: "text-[11px] font-semibold text-gray-700 block mb-1", children: "Exact Expiry Date (Calendar Picker)" }),
+                              a.jsx("input", {
+                                type: "date",
+                                value: customExpiryDate,
+                                onChange: b => {
+                                  setCustomExpiryDate(b.target.value);
+                                  w("");
+                                },
+                                className: "input text-xs py-1.5 w-full"
+                              })
+                            ]
+                          }),
+                          a.jsxs("div", {
+                            children: [
+                              a.jsx("span", { className: "text-[11px] font-semibold text-gray-700 block mb-1", children: "Admin Note / Reason (Optional)" }),
+                              a.jsx("input", {
+                                type: "text",
+                                value: j,
+                                onChange: b => f(b.target.value),
+                                placeholder: "e.g. Monthly renewal / Offline UPI payment",
+                                className: "input text-xs py-1.5 w-full"
+                              })
+                            ]
+                          })
+                        ]
+                      }),
+
+                      /* ACTION BUTTONS */
+                      a.jsxs("div", {
+                        className: "flex gap-2 pt-2",
+                        children: [
+                          a.jsxs("button", {
+                            type: "button",
+                            onClick: handleModalProActivate,
+                            disabled: g,
+                            className: "btn-primary flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm bg-amber-600 hover:bg-amber-700 text-white",
+                            children: [
+                              a.jsx(Ve, { className: "w-4 h-4" }),
+                              g ? "Saving in Firestore..." : isProActive ? "⚡ Update / Extend PRO Plan" : isProExpired ? "⚡ Renew & Set PRO Active" : "⚡ Set PRO Active"
+                            ]
+                          }),
+                          isUserPro && a.jsxs("button", {
+                            type: "button",
+                            onClick: handleModalProDeactivate,
+                            disabled: g,
+                            className: "py-2.5 px-4 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors",
+                            children: [
+                              a.jsx(Cw, { className: "w-4 h-4" }),
+                              g ? "Saving..." : "🛑 Set Inactive"
+                            ]
+                          })
+                        ]
+                      })
+                    ]
+                  })
+                ]
+              }),
+
+              /* ACCOUNT STATUS & SECURITY (INDEPENDENT FROM PRO) */
+              a.jsxs("div", {
+                className: "p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-3",
+                children: [
+                  a.jsxs("div", {
+                    className: "flex items-center justify-between flex-wrap gap-2",
+                    children: [
+                      a.jsxs("div", {
+                        children: [
+                          a.jsx("h3", { className: "text-sm font-bold text-gray-900", children: "Account Status & Access Control" }),
+                          a.jsx("p", { className: "text-xs text-gray-500 mt-0.5", children: "Control whether user can login and post listings." })
+                        ]
+                      }),
+                      a.jsx("span", {
+                        className: "badge " + (isBlocked ? "badge-red" : isInactive ? "badge-amber" : "badge-green"),
+                        children: isBlocked ? "🚫 Blocked" : isInactive ? "⏸ Inactive" : "Active"
+                      })
+                    ]
+                  }),
+                  a.jsxs("div", {
+                    className: "flex items-center gap-2 flex-wrap",
+                    children: [
+                      a.jsx("button", {
+                        type: "button",
+                        onClick: () => handleModalAccountStatus("active"),
+                        disabled: g || (!isBlocked && !isInactive),
+                        className: "py-2 px-3 rounded-lg border text-xs font-bold flex-1 " + (!isBlocked && !isInactive ? "border-green-400 bg-green-100 text-green-800 cursor-default" : "border-green-300 bg-white text-green-700 hover:bg-green-50"),
+                        children: "✔ Set Active"
+                      }),
+                      a.jsx("button", {
+                        type: "button",
+                        onClick: () => handleModalAccountStatus("inactive"),
+                        disabled: g || isInactive,
+                        className: "py-2 px-3 rounded-lg border text-xs font-bold flex-1 " + (isInactive ? "border-amber-400 bg-amber-100 text-amber-800 cursor-default" : "border-amber-300 bg-white text-amber-700 hover:bg-amber-50"),
+                        children: "⏸ Set Inactive"
+                      }),
+                      a.jsx("button", {
+                        type: "button",
+                        onClick: () => handleModalAccountStatus(isBlocked ? "active" : "blocked"),
+                        disabled: g,
+                        className: "py-2 px-3 rounded-lg border text-xs font-bold flex-1 " + (isBlocked ? "border-green-500 bg-green-50 text-green-700 hover:bg-green-100" : "border-red-300 bg-white text-red-700 hover:bg-red-50"),
+                        children: isBlocked ? "🔓 Unblock User" : "🚫 Block User"
+                      })
+                    ]
+                  })
+                ]
+              }),
+
+              /* SUPER ADMIN ROLE CONTROL */
+              e && a.jsxs("div", {
+                className: "p-4 rounded-xl border border-gray-200 bg-white space-y-3",
+                children: [
+                  a.jsx("h3", { className: "text-sm font-bold text-gray-900", children: "Change User Role (Super Admin)" }),
+                  a.jsxs("div", {
+                    className: "flex gap-2",
+                    children: [
+                      a.jsxs("select", {
+                        value: p,
+                        onChange: b => v(b.target.value),
+                        className: "input text-xs flex-1",
+                        children: [
+                          a.jsx("option", { value: "user", children: "User (Standard)" }),
+                          a.jsx("option", { value: "seller", children: "Seller / Merchant" }),
+                          a.jsx("option", { value: "admin", children: "Admin" }),
+                          a.jsx("option", { value: "super_admin", children: "Super Admin" })
+                        ]
+                      }),
+                      a.jsx("button", {
+                        type: "button",
+                        onClick: () => handleModalRoleChange(p),
+                        disabled: g || p === c.role,
+                        className: "btn-outline text-xs px-4 font-bold disabled:opacity-50",
+                        children: g ? "Saving..." : "Update Role"
+                      })
+                    ]
+                  })
+                ]
+              }),
+
+              /* FOOTER CLOSE */
+              a.jsx("div", {
+                className: "pt-2 flex justify-end",
+                children: a.jsx("button", {
+                  type: "button",
+                  onClick: () => { h(null); u(null); },
+                  className: "btn-outline text-xs px-6 py-2 font-bold",
+                  children: "Close User Record"
+                })
+              })
+            ]
+          });
+        })()
       }),
       /* ROLE MODAL */
       a.jsx(ze, {

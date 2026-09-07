@@ -617,6 +617,45 @@
     return memoryCache.users || localUsers;
   }
 
+  async function getUser(idOrEmail) {
+    if (!idOrEmail) return null;
+    const cleanId = String(idOrEmail).trim();
+    const cleanEmail = cleanId.toLowerCase();
+
+    // 1. Check in-memory cache first
+    let users = memoryCache.users || [];
+    let match = users.find(u => u && (u.id === cleanId || (u.email && u.email.toLowerCase() === cleanEmail)));
+    if (match) return match;
+
+    // 2. Fetch directly from Firestore by Document ID
+    try {
+      const doc = await firestoreRequest(`users/${encodeURIComponent(cleanId)}`);
+      if (doc && doc.fields) {
+        const userData = firestoreFieldsToJs(doc.fields);
+        const resolved = { id: cleanId, ...userData };
+        // update cache
+        const idx = users.findIndex(u => u.id === cleanId);
+        if (idx >= 0) users[idx] = resolved;
+        else users.push(resolved);
+        memoryCache.users = users;
+        return resolved;
+      }
+    } catch(err) {
+      console.warn('[Firebase] Get user by doc ID error:', err);
+    }
+
+    // 3. If query might be an email or Auth UID, fetch full users list from Firestore
+    try {
+      const allCloudUsers = await getUsers(true);
+      if (Array.isArray(allCloudUsers)) {
+        match = allCloudUsers.find(u => u && (u.id === cleanId || (u.email && u.email.toLowerCase() === cleanEmail)));
+        if (match) return match;
+      }
+    } catch(err) {}
+
+    return null;
+  }
+
   async function saveUser(userObj) {
     if (!userObj || !userObj.id) return;
     const cleanUser = {
@@ -625,7 +664,7 @@
     };
 
     let users = memoryCache.users || [];
-    const idx = users.findIndex(u => u.id === cleanUser.id);
+    const idx = users.findIndex(u => u.id === cleanUser.id || (cleanUser.email && u.email && u.email.toLowerCase() === cleanUser.email.toLowerCase()));
     if (idx >= 0) {
       users[idx] = { ...users[idx], ...cleanUser };
     } else {
@@ -658,11 +697,143 @@
     const updated = {
       ...target,
       account_status: accountStatus || target.account_status || 'active',
+      status: accountStatus || target.status || 'active',
       role: role || target.role || 'user',
       ...extra,
       updated_at: new Date().toISOString()
     };
     return await saveUser(updated);
+  }
+
+  async function updateUserPro(userId, isPro, durationDaysOrExpiry = 30, uEmail = '', reason = '') {
+    if (!userId && !uEmail) throw new Error('User ID or Email is required');
+    const effectiveId = userId || uEmail;
+    
+    let expiry = null;
+    if (isPro) {
+      if (typeof durationDaysOrExpiry === 'string' && (durationDaysOrExpiry.includes('-') || durationDaysOrExpiry.includes('/'))) {
+        const d = new Date(durationDaysOrExpiry);
+        expiry = isNaN(d.getTime()) ? new Date(Date.now() + 30 * 86400000).toISOString() : d.toISOString();
+      } else {
+        const days = Number(durationDaysOrExpiry) || 30;
+        expiry = new Date(Date.now() + days * 86400000).toISOString();
+      }
+    }
+
+    let users = memoryCache.users || [];
+    let target = users.find(u => u && (u.id === effectiveId || (uEmail && u.email && u.email.toLowerCase() === uEmail.toLowerCase()))) || { id: effectiveId, email: uEmail };
+
+    const updated = {
+      ...target,
+      id: target.id || effectiveId,
+      email: target.email || uEmail || '',
+      is_pro: Boolean(isPro),
+      pro_status: isPro ? 'active' : 'inactive',
+      pro_expires_at: expiry,
+      pro_expiry_at: expiry,
+      approved_expiry_date: expiry,
+      pro_updated_at: new Date().toISOString(),
+      pro_reason: reason || (isPro ? 'Admin updated PRO plan' : 'Admin set PRO inactive'),
+      updated_at: new Date().toISOString()
+    };
+
+    // 1. Update memory cache and localStorage overrides
+    const idx = users.findIndex(u => u && (u.id === updated.id || (u.email && updated.email && u.email.toLowerCase() === updated.email.toLowerCase())));
+    if (idx >= 0) users[idx] = updated;
+    else users.push(updated);
+    memoryCache.users = users;
+
+    const pData = {
+      is_pro: Boolean(isPro),
+      pro_status: isPro ? 'active' : 'inactive',
+      pro_expires_at: expiry,
+      pro_expiry_at: expiry,
+      approved_expiry_date: expiry
+    };
+
+    try {
+      const localPro = JSON.parse(localStorage.getItem('admin_pro_overrides') || '{}');
+      if (updated.id) localPro[updated.id] = pData;
+      if (updated.email) {
+        localPro[updated.email] = pData;
+        localPro[updated.email.toLowerCase().trim()] = pData;
+      }
+      localStorage.setItem('admin_pro_overrides', JSON.stringify(localPro));
+      localStorage.setItem('pro_status_overrides', JSON.stringify(localPro));
+      localStorage.setItem('admin_users_cache', JSON.stringify(users));
+    } catch(e) {}
+
+    // 2. Dispatch events for real-time listener updates
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('user_profile_updated', { detail: updated }));
+      window.dispatchEvent(new CustomEvent('user_status_changed', { detail: updated }));
+      window.dispatchEvent(new Event('storage'));
+    }
+
+    // 3. Persist permanently to Firestore
+    try {
+      const fields = jsToFirestoreFields(updated);
+      const res = await firestoreRequest(`users/${updated.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fields })
+      });
+      console.log(`[Firebase] User PRO status permanently set to ${isPro ? 'ACTIVE' : 'INACTIVE'} in Firestore:`, updated.id);
+      return updated;
+    } catch(err) {
+      console.error('[Firebase] Error updating PRO status in Firestore:', err);
+      throw err;
+    }
+  }
+
+  async function updateUserAccountStatus(userId, accountStatus, uEmail = '') {
+    if (!userId && !uEmail) throw new Error('User ID or Email is required');
+    const effectiveId = userId || uEmail;
+    let users = memoryCache.users || [];
+    let target = users.find(u => u && (u.id === effectiveId || (uEmail && u.email && u.email.toLowerCase() === uEmail.toLowerCase()))) || { id: effectiveId, email: uEmail };
+
+    const updated = {
+      ...target,
+      id: target.id || effectiveId,
+      email: target.email || uEmail || '',
+      account_status: accountStatus,
+      status: accountStatus,
+      updated_at: new Date().toISOString()
+    };
+
+    const idx = users.findIndex(u => u && (u.id === updated.id || (u.email && updated.email && u.email.toLowerCase() === updated.email.toLowerCase())));
+    if (idx >= 0) users[idx] = updated;
+    else users.push(updated);
+    memoryCache.users = users;
+
+    try {
+      const statusOverrides = JSON.parse(localStorage.getItem('admin_status_overrides') || '{}');
+      if (updated.id) statusOverrides[updated.id] = { account_status: accountStatus, status: accountStatus };
+      if (updated.email) {
+        statusOverrides[updated.email] = { account_status: accountStatus, status: accountStatus };
+        statusOverrides[updated.email.toLowerCase().trim()] = { account_status: accountStatus, status: accountStatus };
+      }
+      localStorage.setItem('admin_status_overrides', JSON.stringify(statusOverrides));
+      localStorage.setItem('admin_users_cache', JSON.stringify(users));
+    } catch(e) {}
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('user_profile_updated', { detail: updated }));
+      window.dispatchEvent(new CustomEvent('user_status_changed', { detail: updated }));
+      window.dispatchEvent(new Event('storage'));
+    }
+
+    try {
+      const fields = jsToFirestoreFields(updated);
+      await firestoreRequest(`users/${updated.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fields })
+      });
+      console.log(`[Firebase] User account status permanently set to ${accountStatus} in Firestore:`, updated.id);
+      return updated;
+    } catch(err) {
+      console.error('[Firebase] Error updating account status in Firestore:', err);
+      throw err;
+    }
   }
 
   // ----------------------------------------------------
@@ -1067,8 +1238,11 @@
     submitRechargeRequest,
     updateRechargeStatus,
     getUsers,
+    getUser,
     saveUser,
     updateUserStatus,
+    updateUserPro,
+    updateUserAccountStatus,
     getLocations,
     saveLocation,
     deleteLocation,
